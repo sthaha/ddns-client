@@ -2,8 +2,6 @@ package main
 
 import (
 	"errors"
-	"github.com/kardianos/service"
-	"github.com/lukamicoder/ini-parser"
 	"log"
 	"math/rand"
 	"net"
@@ -11,38 +9,43 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/kardianos/service"
+	iniparser "github.com/lukamicoder/ini-parser"
 )
 
 var (
 	interval = 3600
 	services []DdnsService
-	logger service.Logger
+	logger   service.Logger
 
 	regex = regexp.MustCompile("(?m)[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}")
 )
 
 var urls = []string{
-	"myipinfo.net",
-	"myip.dnsomatic.com",
-	"icanhazip.com",
-	"checkip.dyndns.org",
-	"www.myipnumber.com",
-	"checkmyip.com",
-	"myexternalip.com",
-	"www.ipchicken.com",
-	"ipecho.net/plain",
+
 	"bot.whatismyipaddress.com",
-	"smart-ip.net/myip",
 	"checkip.amazonaws.com",
+	"checkip.dyndns.org",
+	"checkmyip.com",
+	"icanhazip.com",
+	"ifconfig.co",
+	"ifconfig.me",
+	"ipecho.net/plain",
+	"myexternalip.com",
+	"myip.dnsomatic.com",
+	"myipinfo.net",
 	"www.checkip.org",
+	"www.ipchicken.com",
+	"www.myipnumber.com",
 }
 
 type program struct {
-	exit chan struct {}
+	exit chan struct{}
 }
 
 func (p *program) Start(s service.Service) error {
-	p.exit = make(chan struct {})
+	p.exit = make(chan struct{})
 	go p.run()
 	return nil
 }
@@ -145,10 +148,17 @@ func loadConfig() error {
 				logger.Errorf("%s - %s", name, err)
 				continue
 			}
-			if _, err := net.LookupHost(service.getDomain()); err != nil {
-				logger.Errorf("%s - %s", name, err)
-				continue
+			domain := service.getDomain()
+			logger.Infof(">>> ?? Lookup %s - %s", name, domain)
+
+			if !strings.HasPrefix(domain, "*.") {
+				logger.Infof(">>>  !! Lookup %s - %s", name, domain)
+				if _, err := net.LookupHost(domain); err != nil {
+					logger.Errorf("%s - %s", name, err)
+					continue
+				}
 			}
+
 			if service.Password, err = config.GetString(name, "password"); err != nil {
 				logger.Errorf("%s - %s", name, err)
 				continue
@@ -359,26 +369,37 @@ func update() {
 	}
 
 	for _, service := range services {
-		addr, err := net.LookupHost(service.getDomain())
-		if err != nil {
-			logger.Errorf("%s - %s", service.getDomain(), err)
-			continue
-		}
-		if len(addr) == 0 || addr[0] == "" {
-			logger.Errorf("%s - Unable to get IP address", service.getDomain())
-			continue
-		}
+		domain := service.getDomain()
 
-		registeredIP := addr[0]
+		if !strings.HasPrefix(domain, "*.") {
+			addr, err := net.LookupHost(service.getDomain())
+			if err != nil {
+				logger.Errorf("%s - %s", service.getDomain(), err)
+				continue
+			}
+			if len(addr) == 0 || addr[0] == "" {
+				logger.Errorf("%s - Unable to get IP address", service.getDomain())
+				continue
+			}
 
-		if currentIP.String() == registeredIP {
-			logger.Infof("%s - No update is necessary", service.getDomain())
-		} else {
-			err := service.updateIP()
-			if err == nil {
+			registeredIP := addr[0]
+
+			if currentIP.String() == registeredIP {
+				logger.Infof("%s - No update is necessary", service.getDomain())
+				continue
+			}
+
+			if err = service.updateIP(); err == nil {
 				logger.Infof("%s - Successfully updated from %s to %s", service.getDomain(), registeredIP, currentIP.String())
 			} else {
 				logger.Errorf("%s - %s", service.getDomain(), err)
+			}
+		} else {
+			err := service.updateIP()
+			if err == nil {
+				logger.Infof("%s - Successfully updated wildcard %s", service.getDomain(), currentIP.String())
+			} else {
+				logger.Errorf("WILDCARD %s - %s", service.getDomain(), err)
 			}
 		}
 	}

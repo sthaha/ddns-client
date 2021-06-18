@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 )
 
@@ -17,18 +19,24 @@ func (s *nameCheapService) getDomain() string {
 }
 
 func (s *nameCheapService) updateIP() error {
-	pos := strings.Index(s.Domain, ".")
+	skip := 0
+	if strings.HasPrefix(s.Domain, "*.") {
+		skip = 2
+	}
+
+	pos := strings.Index(s.Domain[skip:], ".") + skip
 	if pos < 1 {
 		return errors.New("Incorrect domain.")
 	}
 
 	host := s.Domain[0:pos]
-	domain := s.Domain[pos + 1 : len(s.Domain)]
+	domain := s.Domain[pos+1 : len(s.Domain)]
 
 	url := "https://dynamicdns.park-your-domain.com/update?domain=" + domain + "&host=" + host + "&password=" + s.Password
 
 	content, err := GetResponse(url, "", "")
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "content: %v \n ", content)
 		return err
 	}
 
