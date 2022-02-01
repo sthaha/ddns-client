@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+
+	"golang.org/x/net/html/charset"
 )
 
 type nameCheapService Ddns
@@ -33,15 +37,25 @@ func (s *nameCheapService) updateIP() error {
 	domain := s.Domain[pos+1 : len(s.Domain)]
 
 	url := "https://dynamicdns.park-your-domain.com/update?domain=" + domain + "&host=" + host + "&password=" + s.Password
-
 	content, err := GetResponse(url, "", "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "content: %v \n ", content)
 		return err
 	}
 
+	nr, err := charset.NewReader(bytes.NewReader([]byte(content)), "utf-16")
+	if err != nil {
+		return err
+	}
+	bypassReader := func(label string, input io.Reader) (io.Reader, error) {
+		return input, nil
+	}
+
+	decoder := xml.NewDecoder(nr)
+	decoder.CharsetReader = bypassReader
+
 	var dict dictionary
-	err = xml.Unmarshal([]byte(content), &dict)
+	err = decoder.Decode(&dict)
 	if err != nil {
 		return err
 	}
